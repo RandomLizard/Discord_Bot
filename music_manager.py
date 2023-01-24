@@ -5,12 +5,11 @@ import time
 
 from discord.ext import commands
 
-class MusicManager():
+class MusicManager(discord.voice_client.VoiceClient):
 
     song_queue = []
 
-    def __init__(self, voice_client):
-        self.voice_client = voice_client
+    def __init__(self, client, channel):
         self.ydl_opts = {
             'format': 'bestaudio/best',
             'postprocessors': [{
@@ -20,6 +19,7 @@ class MusicManager():
                 }],
             'outtmpl': '/Music/%(id)s.%(ext)s'
         }
+        super().__init__(client, channel)
 
 
     async def enqueue(self, song):
@@ -42,7 +42,7 @@ class MusicManager():
         print(f"Queue Length: {len(self.song_queue)}") #debug
 
         if len(self.song_queue) == 1: 
-            self.play_song(path)
+            self.begin_audio(path)
         
         if custom_title == True: 
             return str('[' + file['entries'][0]['title'] + ']')
@@ -52,11 +52,11 @@ class MusicManager():
 
     def get_next(self, path):
         if len(self.song_queue) > 0:
-            self.play_song(self.song_queue[0])        
+            self.begin_audio(self.song_queue[0])        
 
 
     def end_song(self, path, audio_source):
-        if not self.voice_client.is_playing():
+        if not self.is_playing():
             print("end song called")
             self.song_queue.pop(0)
             print(f"Queue Length: {len(self.song_queue)}") #debug
@@ -65,20 +65,12 @@ class MusicManager():
             os.remove(path)
 
 
-    def play_song(self, path):
+    def begin_audio(self, path):
         audio_source = discord.FFmpegPCMAudio(path)
 
-        self.voice_client.play(audio_source, after=lambda x: self.end_song(path, audio_source))
-        self.voice_client.source = discord.PCMVolumeTransformer(self.voice_client.source, 1)
+        self.play(audio_source, after=lambda x: self.end_song(path, audio_source))
+        self.source = discord.PCMVolumeTransformer(self.source, 1)
 
     
     def skip(self):
-        self.voice_client.stop()
-
-    
-    def pause(self):
-        self.voice_client.pause()
-
-
-    def resume(self):
-        self.voice_client.resume()
+        self.stop()
