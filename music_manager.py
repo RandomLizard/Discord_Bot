@@ -82,6 +82,8 @@ class MusicManager(discord.voice_client.VoiceClient):
         await asyncio.sleep(self.song_durations[0]+2)
 
         self.song_queue.pop(0)
+        self.song_durations.pop(0)
+        self.song_names.pop(0)
         audio_source.cleanup()
         os.remove(path)
 
