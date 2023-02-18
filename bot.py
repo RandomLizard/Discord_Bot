@@ -1,9 +1,11 @@
 import os
 import discord
 import music_manager as MM
+import json
 
 from dotenv import load_dotenv
 from discord.ext import commands
+from pathlib import Path
 
 load_dotenv()
 TOKEN = os.getenv('DISCORD_TOKEN')
@@ -15,12 +17,63 @@ client = commands.Bot(intents=intents,command_prefix='!')
 
 active_voice_clients = {}
 
+primary_text_channels = {}
+
+#LOAD PRIMARY CHANNELS FOR GUILDS#
+json_path = Path('data\\data.json')
+
+try: 
+    with open(json_path, "r") as read_file:
+        primary_text_channels = json.load(read_file)      
+
+except: 
+    print("No json file detected.")
+
+
+def convert_keys_to_int(dictionary):
+
+    dictionary = {int(k):v for k, v in dictionary.items()}
+    return dictionary
+
+primary_text_channels = convert_keys_to_int(primary_text_channels)
+print(primary_text_channels)
+
+##TEXT-RELATED FUNCTIONS##
+
+async def find_primary_text_channel(ctx):
+    print(primary_text_channels)
+    print('Attempting to find primary text channel for this server')
+    if ctx.guild.id in primary_text_channels:
+        print('FOUND GUILD')
+        return await client.fetch_channel(primary_text_channels[ctx.guild.id])
+    else:
+        print('NOT FOUND')
+        return None
+
+
+
+##TEXT-RELATED COMMANDS##
+
+@client.command()
+async def primarychannel(ctx):
+    await ctx.send(f"Assigning [{ctx.channel.name}] as the primary channel that I'll spam.")
+    primary_text_channels.update({ctx.guild.id : ctx.channel.id})
+    with open(json_path, "w") as write_file:
+        json.dump(primary_text_channels, write_file, indent=4)
+
+
+
+##MUSIC-RELATED FUNCTIONS##
 
 async def create_voice_client(ctx, channel):
     """creates voice client in the specified channel with a music manager attached to it"""
 
+    primary_text_channel = await find_primary_text_channel(ctx)
+
     voice_client = await channel.connect(cls=MM.MusicManager, self_deaf = True)
     active_voice_clients.update({ctx.guild.id : voice_client})
+    voice_client.primary_text_channel = primary_text_channel
+    print(voice_client.primary_text_channel)
 
 
 async def destroy_voice_client(ctx, voice_client):
@@ -45,7 +98,7 @@ async def manage_voice_connection(ctx, command):
     """Manages voice connections for the discord bot. Will respond snarkily if 
     you try to summon it to a place it can't go."""
 
-    user_voice = ctx.author.voice #The command caller's voice status
+    user_voice = ctx.author.voice
     voice_client = await find_voice_client(ctx)
 
     if command == 'connect':
@@ -69,6 +122,7 @@ async def manage_voice_connection(ctx, command):
         print("if you see this, God help you.")
 
 
+##MUSIC-RELATED COMMANDS##
 @client.command()
 async def connect(ctx):
     await manage_voice_connection(ctx, 'connect')
@@ -80,25 +134,17 @@ async def disconnect(ctx):
 
 
 @client.command()
-async def clearchannel(ctx):
-    await ctx.channel.purge()
-
-
-@client.command()
 async def play(ctx, *input):
-    
+    query = ' '.join(input)
     voice_client = await find_voice_client(ctx)
     print(voice_client)
     
     if voice_client == None:
         await manage_voice_connection(ctx, 'connect')
     else:
-        query = ' '.join(input)
-
+        primary_text_channel = await find_primary_text_channel(ctx)
+        print(primary_text_channel)
         song_title = await voice_client.enqueue(query)
-
-        if len(voice_client.song_queue) > 1:
-            await ctx.send(f'Your song, {song_title} is # {len(voice_client.song_queue)} in the queue.')
 
 
 @client.command()
@@ -107,7 +153,7 @@ async def skip(ctx):
 
 
     if voice_client != None:
-        voice_client.skip()
+        await voice_client.skip()
 
 
 @client.command()
@@ -115,7 +161,7 @@ async def pause(ctx):
     voice_client = await find_voice_client(ctx)
 
     if voice_client != None: 
-        voice_client.pause()
+        await voice_client.pause()
 
 
 @client.command()
@@ -123,7 +169,9 @@ async def resume(ctx):
     voice_client = await find_voice_client(ctx)
 
     if voice_client != None:
-        voice_client.resume()
+        await voice_client.resume()
+
+        
 
 
 client.run(TOKEN)
